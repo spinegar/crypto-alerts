@@ -1,4 +1,4 @@
-# Crypto Balance
+# Crypto Alerts
 
 Get alerted when any new crypto appears on your preferred exchange.
 Tested with gdax, bittrex, binance, and kucoin but will work with other exchanges supported by [cctx](https://github.com/ccxt/ccxt)
