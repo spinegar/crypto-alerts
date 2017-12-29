@@ -16,7 +16,7 @@ const logger = log4js.getLogger('logFile');
 
 function main() {
 
-    logger.info('Starting crypto-trader');
+    logger.info('Starting crypto alerts');
     connectDb().then(function() {
         var exchanges = _.filter(config.exchanges, (exchange) => { return exchange.enabled; });
 
@@ -45,13 +45,9 @@ function main() {
         }, function(err) {
             if(err) {
                 logger.error(err);
-                logger.info('Waiting 1 minute to run again...');
-                setTimeout(function(){
-                    main();
-                }, 60000);
+            } else {
+                if(firstRun) firstRun = false;
             }
-
-            if(firstRun) firstRun = false;
 
             logger.info('Finished!');
             logger.info('Waiting 1 minute to run again...');
