@@ -15,46 +15,9 @@ log4js.configure({
 const logger = log4js.getLogger('logFile');
 
 function main() {
-
     logger.info('Starting crypto alerts');
     connectDb().then(function() {
-        var exchanges = _.filter(config.exchanges, (exchange) => { return exchange.enabled; });
-
-        async.eachLimit(exchanges, 10, function(exchange, cb) {
-            logger.info('Processing exchange ' + exchange.exchange);
-            fetchMarketsForExchange(exchange.exchange).then((markets) => {
-                async.eachLimit(markets, 10, (market, cb) => {
-                    _.extend(market, { exchange: exchange.exchange } );
-                    Crypto.findOne({id: market.id, exchange: market.exchange, isTrading: true}).exec((err, result) => {
-                        if(err) return cb(err);
-
-                        if(!_.isEmpty(result)) return cb();
-
-                        checkIfTrading(market).then((isTrading) => {
-                            if(isTrading) _.extend(market, { isTrading: true });
-
-                            cb();
-                        }).catch(cb);
-                    });
-                }, (err, results) => {
-                    if(err) return cb(err);
-
-                    saveMarketsToDb(markets).then(cb).catch(cb)
-                });
-            }).catch(cb)
-        }, function(err) {
-            if(err) {
-                logger.error(err);
-            } else {
-                if(firstRun) firstRun = false;
-            }
-
-            logger.info('Finished!');
-            logger.info('Waiting 1 minute to run again...');
-            setTimeout(function(){
-                main();
-            }, 60000);
-        });
+        processExchanges();
     }).catch(handleReject);
 }
 
@@ -100,6 +63,46 @@ function connectDb() {
                 handleReject(err);
             }
         });
+    });
+}
+
+function processExchanges() {
+    var exchanges = _.filter(config.exchanges, (exchange) => { return exchange.enabled; });
+
+    async.eachLimit(exchanges, 10, function(exchange, cb) {
+        logger.info('Processing exchange ' + exchange.exchange);
+        fetchMarketsForExchange(exchange.exchange).then((markets) => {
+            async.eachLimit(markets, 10, (market, cb) => {
+                _.extend(market, { exchange: exchange.exchange } );
+                Crypto.findOne({id: market.id, exchange: market.exchange, isTrading: true}).exec((err, result) => {
+                    if(err) return cb(err);
+
+                    if(!_.isEmpty(result)) return cb();
+
+                    checkIfTrading(market).then((isTrading) => {
+                        if(isTrading) _.extend(market, { isTrading: true });
+
+                        cb();
+                    }).catch(cb);
+                });
+            }, (err, results) => {
+                if(err) return cb(err);
+
+                saveMarketsToDb(markets).then(cb).catch(cb)
+            });
+        }).catch(cb)
+    }, function(err) {
+        if(err) {
+            logger.error(err);
+        } else {
+            if(firstRun) firstRun = false;
+        }
+
+        logger.info('Finished!');
+        logger.info('Waiting 1 minute to run again...');
+        setTimeout(function(){
+            processExchanges();
+        }, 60000);
     });
 }
 
