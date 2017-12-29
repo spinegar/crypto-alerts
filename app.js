@@ -157,12 +157,15 @@ function notifySubscribers(market, msg) {
 
 function notifyEmailSubscribers() {
     return new Promise(function(resolve, reject) {
-       resolve();
+        if(_.get(config, 'notify.email.enabled', false) === false) return resolve();
+        resolve();
     });
 }
 
 function notifySmsSubscribers(market, msg) {
     return new Promise(function(resolve, reject) {
+        if(_.get(config, 'notify.sms.enabled', false) === false) return resolve();
+
         var client = require('twilio')(_.get(config, 'notify.sms.twilioAccountSid'), _.get(config, 'notify.sms.twilioAuthToken'));
         async.eachLimit(_.get(config, 'notify.sms.subscribers', []), 10, (subscriber, cb) => {
             client.messages.create({
@@ -182,6 +185,8 @@ function notifySmsSubscribers(market, msg) {
 
 function notifyVoiceSubscribers(market, msg) {
     return new Promise(function (resolve, reject) {
+        if(_.get(config, 'notify.voice.enabled', false) === false) return resolve();
+
         var client = require('twilio')(_.get(config, 'notify.voice.twilioAccountSid'), _.get(config, 'notify.voice.twilioAuthToken'));
         async.eachLimit(_.get(config, 'notify.voice.subscribers', []), 10, (subscriber, cb) => {
             client.calls.create({
