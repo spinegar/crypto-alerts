@@ -37,6 +37,8 @@ module.exports = {
         voice: {
             twilioAccountSid: "",
             twilioAuthToken: "",
+            from: "",
+            url: "",
             subscribers: [
 
             ]
@@ -44,6 +46,7 @@ module.exports = {
         sms: {
             twilioAccountSid: "",
             twilioAuthToken: "",
+            from: "",
             subscribers: [
 
             ]
