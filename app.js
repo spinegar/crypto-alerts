@@ -232,9 +232,7 @@ function fetchMarketsForExchange(exchangeName) {
         var exchange = new ccxt[exchangeName](config.exchanges[exchangeName]);
         exchange.loadMarkets().then((markets) => {
             resolve(_.map(markets, (market) => { return _.extend(market, { exchange: exchangeName }) }));
-        }).catch((err) => {
-            handleReject(err);
-        });
+        }).catch(reject);
     });
 }
 
