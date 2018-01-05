@@ -6,7 +6,7 @@ const mongoose = require('mongoose');
 const Promise = require('bluebird');
 const Crypto = require('./models/crypto');
 const config = require('./config');
-var firstRun = true;
+var firstRun = false;
 
 log4js.configure({
     appenders: { logFile: { type: 'file', filename: 'log.txt' } },
@@ -17,7 +17,16 @@ const logger = log4js.getLogger('logFile');
 function main() {
     logger.info('Starting crypto alerts');
     connectDb().then(function() {
-        processExchanges();
+        Crypto.count({}).exec((err, coins) => {
+            if(err) handleReject(err);
+
+            if(!coins) {
+                firstRun = true;
+                logger.info('Initiating first run. Alarms will not fire!');
+            }
+
+            processExchanges();
+        });
     }).catch(handleReject);
 }
 
@@ -69,41 +78,47 @@ function connectDb() {
 function processExchanges() {
     var exchanges = _.filter(config.exchanges, (exchange) => { return exchange.enabled; });
 
-    async.eachLimit(exchanges, 10, function(exchange, cb) {
-        logger.info('Processing exchange ' + exchange.exchange);
-        fetchMarketsForExchange(exchange.exchange).then((markets) => {
-            async.eachLimit(markets, 10, (market, cb) => {
-                _.extend(market, { exchange: exchange.exchange } );
-                Crypto.findOne({id: market.id, exchange: market.exchange, isTrading: true}).exec((err, result) => {
-                    if(err) return cb(err);
-
-                    if(!_.isEmpty(result)) return cb();
-
-                    checkIfTrading(market).then((isTrading) => {
-                        if(isTrading) _.extend(market, { isTrading: true });
-
-                        cb();
-                    }).catch(cb);
-                });
-            }, (err, results) => {
-                if(err) return cb(err);
-
-                saveMarketsToDb(markets).then(cb).catch(cb)
-            });
-        }).catch(cb)
-    }, function(err) {
-        if(err) {
-            logger.error(err);
-        } else {
-            if(firstRun) firstRun = false;
-        }
+    Promise.each(exchanges, (exchange) => {
+        processExchange(exchange);
+    }).then(() => {
+        if(firstRun) firstRun = false;
 
         logger.info('Finished!');
         logger.info('Waiting 1 minute to run again...');
         setTimeout(function(){
             processExchanges();
         }, 60000);
-    });
+    }).catch(handleReject)
+}
+
+function processExchange(exchange) {
+    return new Promise((resolve, reject) => {
+        logger.info('Processing exchange ' + exchange.exchange);
+        fetchMarketsForExchange(exchange.exchange).then((markets) => {
+            return new Promise.each(markets, (market) => {
+                return processMarket(market, exchange);
+            });
+        }).then((markets) => {
+            saveMarketsToDb(markets).then(resolve).catch(reject)
+        }).catch(reject)
+    })
+}
+
+function processMarket(market, exchange) {
+    return new Promise((resolve, reject) => {
+        _.extend(market, { exchange: exchange.exchange } );
+        Crypto.findOne({id: market.id, exchange: market.exchange, isTrading: true}).exec((err, result) => {
+            if(err) return reject(err);
+
+            if(!_.isEmpty(result)) resolve();
+
+            checkIfTrading(market).then((isTrading) => {
+                if(isTrading) _.extend(market, { isTrading: true });
+
+                resolve(market);
+            }).catch(reject);
+        });
+    })
 }
 
 //todo - finish this method. check for active trades
@@ -114,35 +129,35 @@ function checkIfTrading(market) {
 }
 
 function saveMarketsToDb(markets) {
+    return new Promise.each(markets, (market) => {
+        return saveMarket(market);
+    });
+}
+
+function saveMarket(market) {
     return new Promise((resolve, reject) => {
-        async.each(markets, (market, cb) => {
-            Crypto.findOne({id: market.id, exchange: market.exchange}).exec((err, result) => {
-                if(err) return cb(err);
+        Crypto.findOne({id: market.id, exchange: market.exchange}).exec((err, result) => {
+            if(err) return reject(err);
 
-                upsertCrypto(market).then(() => {
-                    if(!result && !firstRun) {
-                        notifySubscribers(market, ' is listed').then(cb).catch(cb);
-                    } else if( _.has(result, 'isTrading') && !result.isTrading && market.isTrading) {
-                        notifySubscribers(market, ' is trading').then(cb).catch(cb);
-                    } else {
-                        cb();
-                    }
-                }).catch(cb);
-
-                function upsertCrypto(update) {
-                    return new Promise((resolve, reject) => {
-                        Crypto.findOneAndUpdate({ id: update.id, exchange: update.exchange }, update, { upsert: true, new: true, setDefaultsOnInsert: true }, (err) => {
-                            if(err) return handleReject(err);
-                            logger.debug('Upserted ' + update.id + ' [' + update.exchange + '] to db');
-                            resolve(update);
-                        });
-                    });
+            upsertCrypto(market).then(() => {
+                if(!result && !firstRun) {
+                    notifySubscribers(market, ' is listed').then(resolve).catch(reject);
+                } else if( _.has(result, 'isTrading') && !result.isTrading && market.isTrading) {
+                    notifySubscribers(market, ' is trading').then(resolve).catch(reject);
+                } else {
+                    resolve();
                 }
-            });
-        }, (err) => {
-            if(err) return handleReject(err);
+            }).catch(reject);
+        });
+    })
+}
 
-            resolve();
+function upsertCrypto(update) {
+    return new Promise((resolve, reject) => {
+        Crypto.findOneAndUpdate({ id: update.id, exchange: update.exchange }, update, { upsert: true, new: true, setDefaultsOnInsert: true }, (err) => {
+            if(err) return handleReject(err);
+            logger.debug('Upserted ' + update.id + ' [' + update.exchange + '] to db');
+            resolve(update);
         });
     });
 }
@@ -152,7 +167,7 @@ function notifySubscribers(market, msg) {
         notifyEmailSubscribers(market, msg),
         notifySmsSubscribers(market, msg),
         notifyVoiceSubscribers(market, msg)
-    ]);
+    ])
 }
 
 function notifyEmailSubscribers() {
@@ -207,7 +222,7 @@ function notifyVoiceSubscribers(market, msg) {
 
 function handleReject(err) {
     return new Promise(function(resolve, reject) {
-        logger.error(err);
+        logger.error('Handling reject', JSON.stringify(err));
         reject(err);
     });
 }
@@ -217,7 +232,9 @@ function fetchMarketsForExchange(exchangeName) {
         var exchange = new ccxt[exchangeName](config.exchanges[exchangeName]);
         exchange.loadMarkets().then((markets) => {
             resolve(_.map(markets, (market) => { return _.extend(market, { exchange: exchangeName }) }));
-        }).catch(handleReject);
+        }).catch((err) => {
+            handleReject(err);
+        });
     });
 }
 
