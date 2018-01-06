@@ -1,18 +1,19 @@
 const ccxt = require('ccxt');
 const _ = require('lodash');
 const async = require('async');
-const log4js = require('log4js');
 const mongoose = require('mongoose');
 const Promise = require('bluebird');
 const Crypto = require('./models/crypto');
+const twilio = require('./lib/twilioHelper');
 const config = require('./config');
-var firstRun = false;
-
+const log4js = require('log4js');
 log4js.configure({
     appenders: { logFile: { type: 'file', filename: 'log.txt' } },
     categories: { default: { appenders: ['logFile'], level: 'info' } }
 });
 const logger = log4js.getLogger('logFile');
+
+let firstRun = false;
 
 function main() {
     logger.info('Starting crypto alerts');
@@ -32,9 +33,9 @@ function main() {
 
 function connectDb() {
     return new Promise(function(resolve, reject) {
-        var url = 'mongodb://localhost/cryptoTrader';
+        let url = 'mongodb://localhost/cryptoTrader';
 
-        var options = {
+        let options = {
             useMongoClient: true,
             autoIndex: false, // Don't build indexes
             reconnectTries: Number.MAX_VALUE, // Never stop trying to reconnect
@@ -76,7 +77,7 @@ function connectDb() {
 }
 
 function processExchanges() {
-    var exchanges = _.filter(config.exchanges, (exchange) => { return exchange.enabled; });
+    let exchanges = _.filter(config.exchanges, (exchange) => { return exchange.enabled; });
 
     Promise.each(exchanges, (exchange) => {
         processExchange(exchange);
@@ -141,9 +142,9 @@ function saveMarket(market) {
 
             upsertCrypto(market).then(() => {
                 if(!result && !firstRun) {
-                    notifySubscribers(market, ' is listed').then(resolve).catch(reject);
+                    notifySubscribersListed(market).then(resolve).catch(reject);
                 } else if( _.has(result, 'isTrading') && !result.isTrading && market.isTrading) {
-                    notifySubscribers(market, ' is trading').then(resolve).catch(reject);
+                    notifySubscribersTrading(market).then(resolve).catch(reject);
                 } else {
                     resolve();
                 }
@@ -152,21 +153,21 @@ function saveMarket(market) {
     })
 }
 
-function upsertCrypto(update) {
-    return new Promise((resolve, reject) => {
-        Crypto.findOneAndUpdate({ id: update.id, exchange: update.exchange }, update, { upsert: true, new: true, setDefaultsOnInsert: true }, (err) => {
-            if(err) return handleReject(err);
-            logger.debug('Upserted ' + update.id + ' [' + update.exchange + '] to db');
-            resolve(update);
-        });
-    });
+function notifySubscribersListed(market) {
+    let msg = market + ' is now listed on ' + market.exchange;
+    return notifySubscribers(msg);
 }
 
-function notifySubscribers(market, msg) {
+function notifySubscribersTrading(market) {
+    let msg = market + ' is now trading on ' + market.exchange;
+    return notifySubscribers(msg);
+}
+
+function notifySubscribers(msg) {
     return Promise.all([
-        notifyEmailSubscribers(market, msg),
-        notifySmsSubscribers(market, msg),
-        notifyVoiceSubscribers(market, msg)
+        notifyEmailSubscribers(msg),
+        twilio.notifySmsSubscribers(msg),
+        twilio.notifyVoiceSubscribers(msg)
     ])
 }
 
@@ -177,45 +178,12 @@ function notifyEmailSubscribers() {
     });
 }
 
-function notifySmsSubscribers(market, msg) {
-    return new Promise(function(resolve, reject) {
-        if(_.get(config, 'notify.sms.enabled', false) === false) return resolve();
-
-        var client = require('twilio')(_.get(config, 'notify.sms.twilioAccountSid'), _.get(config, 'notify.sms.twilioAuthToken'));
-        async.eachLimit(_.get(config, 'notify.sms.subscribers', []), 10, (subscriber, cb) => {
-            client.messages.create({
-                to: subscriber,
-                from: _.get(config, 'notify.sms.from', ''),
-                body: market.base + msg + " on " + market.exchange
-            }, (err) => {
-                if(err) return cb(err);
-                return cb();
-            });
-        }, (err) => {
+function upsertCrypto(update) {
+    return new Promise((resolve, reject) => {
+        Crypto.findOneAndUpdate({ id: update.id, exchange: update.exchange }, update, { upsert: true, new: true, setDefaultsOnInsert: true }, (err) => {
             if(err) return handleReject(err);
-            resolve();
-        });
-    });
-}
-
-function notifyVoiceSubscribers(market, msg) {
-    return new Promise(function (resolve, reject) {
-        if(_.get(config, 'notify.voice.enabled', false) === false) return resolve();
-
-        var client = require('twilio')(_.get(config, 'notify.voice.twilioAccountSid'), _.get(config, 'notify.voice.twilioAuthToken'));
-        async.eachLimit(_.get(config, 'notify.voice.subscribers', []), 10, (subscriber, cb) => {
-            client.calls.create({
-                to: subscriber,
-                from: _.get(config, 'notify.voice.from', ''),
-                body: market.id + msg + " on " + market.exchange,
-                url: _.get(config, 'notify.voice.url', 'http://demo.twilio.com/docs/voice.xml'),
-            }, (err) => {
-                if (err) return cb(err);
-                return cb();
-            });
-        }, (err) => {
-            if (err) return handleReject(err);
-            resolve();
+            logger.debug('Upserted ' + update.id + ' [' + update.exchange + '] to db');
+            resolve(update);
         });
     });
 }
@@ -229,7 +197,7 @@ function handleReject(err) {
 
 function fetchMarketsForExchange(exchangeName) {
     return new Promise((resolve, reject) => {
-        var exchange = new ccxt[exchangeName](config.exchanges[exchangeName]);
+        let exchange = new ccxt[exchangeName](config.exchanges[exchangeName]);
         exchange.loadMarkets().then((markets) => {
             resolve(_.map(markets, (market) => { return _.extend(market, { exchange: exchangeName }) }));
         }).catch(reject);
