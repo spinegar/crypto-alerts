@@ -23,6 +23,7 @@ function main() {
 
             if(!coins) {
                 firstRun = true;
+                console.log('Initiating first run. Alarms will not fire!');
                 logger.info('Initiating first run. Alarms will not fire!');
             }
 
@@ -84,8 +85,8 @@ function processExchanges() {
     }).then(() => {
         if(firstRun) firstRun = false;
 
-        logger.info('Finished!');
-        logger.info('Waiting 1 minute to run again...');
+        logger.info('Finished.... running again shortly.');
+        console.log('Finished.... running again shortly.');
         setTimeout(function(){
             processExchanges();
         }, 60000);
@@ -95,6 +96,7 @@ function processExchanges() {
 function processExchange(exchange) {
     return new Promise((resolve, reject) => {
         logger.info('Processing exchange ' + exchange.exchange);
+        console.log('Processing exchange ' + exchange.exchange);
         fetchMarketsForExchange(exchange.exchange).then((markets) => {
             return new Promise.each(markets, (market) => {
                 return processMarket(market, exchange);
