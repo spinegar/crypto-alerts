@@ -90,7 +90,7 @@ function processExchanges() {
         setTimeout(function(){
             processExchanges();
         }, 60000);
-    }).catch(reject)
+    }).catch(handleReject)
 }
 
 function processExchange(exchange) {
