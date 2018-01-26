@@ -133,6 +133,8 @@ function checkIfTrading(market) {
 
 function saveMarketsToDb(markets) {
     return new Promise.each(markets, (market) => {
+        console.log('saving pair ' + market + ' to db');
+        logger.info('saving pair ' + market + ' to db');
         return saveMarket(market);
     });
 }
