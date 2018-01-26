@@ -133,8 +133,6 @@ function checkIfTrading(market) {
 
 function saveMarketsToDb(markets) {
     return new Promise.each(markets, (market) => {
-        console.log('saving pair ' + market + ' to db');
-        logger.info('saving pair ' + market + ' to db');
         return saveMarket(market);
     });
 }
@@ -143,6 +141,11 @@ function saveMarket(market) {
     return new Promise((resolve, reject) => {
         Crypto.findOne({id: market.id, exchange: market.exchange}).exec((err, result) => {
             if(err) return reject(err);
+
+            if(!result) {
+                console.log('saving pair ' + market.id + ' to db');
+                logger.info('saving pair ' + market.id + ' to db');
+            }
 
             upsertCrypto(market).then(() => {
                 if(!result && !firstRun) {
