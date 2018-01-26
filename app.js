@@ -71,7 +71,7 @@ function connectDb() {
 
         mongoose.connect(url, options, function(err) {
             if (err) {
-                handleReject(err);
+                reject(err);
             }
         });
     });
@@ -90,7 +90,7 @@ function processExchanges() {
         setTimeout(function(){
             processExchanges();
         }, 60000);
-    }).catch(handleReject)
+    }).catch(reject)
 }
 
 function processExchange(exchange) {
@@ -188,7 +188,7 @@ function notifyEmailSubscribers() {
 function upsertCrypto(update) {
     return new Promise((resolve, reject) => {
         Crypto.findOneAndUpdate({ id: update.id, exchange: update.exchange }, update, { upsert: true, new: true, setDefaultsOnInsert: true }, (err) => {
-            if(err) return handleReject(err);
+            if(err) return reject(err);
             logger.debug('Upserted ' + update.id + ' [' + update.exchange + '] to db');
             resolve(update);
         });
@@ -198,6 +198,7 @@ function upsertCrypto(update) {
 function handleReject(err) {
     return new Promise(function(resolve, reject) {
         logger.error('Handling reject', JSON.stringify(err));
+        process.exit(1);
         reject(err);
     });
 }
