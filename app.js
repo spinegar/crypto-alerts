@@ -161,12 +161,12 @@ function saveMarket(market) {
 }
 
 function notifySubscribersListed(market) {
-    let msg = market + ' is now listed on ' + market.exchange;
+    let msg = market.base + ' is now listed on ' + market.exchange;
     return notifySubscribers(msg);
 }
 
 function notifySubscribersTrading(market) {
-    let msg = market + ' is now trading on ' + market.exchange;
+    let msg = market.base + ' is now trading on ' + market.exchange;
     return notifySubscribers(msg);
 }
 
